@@ -1,9 +1,4 @@
-    #!/usr/bin/env python
-    # coding: utf-8
-
-    # In[1]:
-
-
+import datetime
     #import dependencies
 import pandas as pd
 from splinter import Browser
@@ -11,96 +6,60 @@ from bs4 import BeautifulSoup as bs
 import requests
 import pymongo
 
-def scrape_info():
+
+def init_browser():
+    # @NOTE: Replace the path with your actual path to the chromedriver
+    executable_path = {'executable_path': '/usr/local/bin/chromedriver'}
+    return Browser("chrome", **executable_path, headless=False)
+
+
+def scrape():
+    browser = init_browser()
+    mars_data = {}
+
+
     # ### NASA Mars News
-
-    # In[2]:
-
-
     # URL of page to be scraped
     url = 'https://mars.nasa.gov/news/'
-
-
-    # In[3]:
-
 
     # Retrieve page with the requests module
     response = requests.get(url)
 
-
-    # In[4]:
-
-
     # Examine the results, then determine element that contains sought info
     soup = bs(response.text, 'html.parser')
-
-
-    # In[5]:
-
-
-    titles = soup.find_all('div', class_="content_title")
-    descs = soup.find_all('div', class_="rollover_description_inner")
-
-
-    # In[6]:
-
 
     # Print all ten headlines
     headings = soup.find_all('div', class_="content_title")
     # A blank list to hold the headlines
     headlines = []
-    # Loop over td elements
+    # Loop over headlines and append
     for heading in headings:
-        # If td element has an anchor...
-        headlines.append(heading.a.get_text(strip=True))                  
-                
+        headlines.append(heading.a.get_text(strip=True)) 
 
+    #grabbing news urls
+    news_urls = soup.find_all('div', class_="content_title")
+    news_links = []
+    for link in news_urls:
+        news_links.append(("https://mars.nasa.gov")+link.a['href'])
+
+    #grabbing news descriptions
     descs = soup.find_all('div', class_="rollover_description_inner")
-    # A blank list to hold the headlines
     descriptions = []
-    # Loop over td elements
     for desc in descs:
-        # If td element has an anchor...
             descriptions.append(desc.get_text(strip=True))
 
 
-    # In[7]:
-
-
-    print(headlines, descriptions)
-
-
     # ### JPL Mars Space Images - Featured Image
-
-    # In[8]:
-
-
-    executable_path = {'executable_path': '/usr/local/bin/chromedriver'}
-    browser = Browser('chrome', **executable_path, headless=False)
     url2 = 'https://www.jpl.nasa.gov/spaceimages/?search=&category=Mars'
     browser.visit(url2)
-
-
-    # In[9]:
-
 
     response = requests.get(url2)
     soup = bs(response.text, 'html.parser')
 
-
-    # In[ ]:
-
-
-
-
-
-    # In[10]:
-
-
-    big_images = soup.find_all('li', class_='slide')# A blank list to hold the headlines
+    big_images = soup.find_all('li', class_='slide')
     featured_image_url = []
 
-
+    #append beginning of url to scraped url
     for big_image in big_images:
         try:
             featured_image_url.append(f"https://www.jpl.nasa.gov{big_image.a['data-fancybox-href']}")
@@ -108,105 +67,66 @@ def scrape_info():
             print("Scraping Complete! :)")
 
 
-    # In[11]:
-
-
-    featured_image_url
-
-
     # ### Mars Weather
-
-    # In[12]:
-
-
-    executable_path = {'executable_path': '/usr/local/bin/chromedriver'}
-    browser = Browser('chrome', **executable_path, headless=False)
     url3 = 'https://twitter.com/marswxreport?lang=en'
     browser.visit(url3)
-
-
-    # In[13]:
-
 
     response3 = requests.get(url3)
     soup3 = bs(response3.text, 'html.parser')
 
     weather_updates=[]
     tweet_times=[]
-    weather_tweets = soup3.find_all('div', class_='js-tweet-text-container')# A blank list to hold the headlines
-    weather_times = soup3.find_all('span', class_='_timestamp')# A blank list to hold the headlines
+    #locate the information within the html
+    weather_tweets = soup3.find_all('div', class_='js-tweet-text-container')
+    weather_times = soup3.find_all('span', class_='_timestamp')
 
-
+    #find and append the tweet
     for tweet in weather_tweets:
         try:
             weather_updates.append(tweet.p.get_text(strip=True))
             tweet.a.extract()
         except:
             print("Scraping Complete! :)")
-            
+
+    #find and append the timestamp         
     for time in weather_times:
         try:
             tweet_times.append(time.get('data-time-ms'))
         except:
             print("Scraping Complete! :)")
             
-    print(tweet_times)
-    print(weather_updates)
+    #fixing tweet times to be in date time format
+    tweet_times_dt = []
+    for tweet in tweet_times:
+        your_dt = datetime.datetime.fromtimestamp(int(tweet)/1000)
+        tweet_times_dt.append(your_dt.strftime("%Y-%m-%d %H:%M:%S"))
 
+    #removing final url from tweet
+    weather_updates_fixed = []
+    for update in weather_updates:
+        nopic = update.split('pic.twitter')[0]
+        weather_updates_fixed.append(nopic)
 
-    # In[14]:
-
-
-
-    with open('twitterinfo.txt', 'w', encoding='utf-8') as f_out:
-        f_out.write(soup3.prettify())
-
-
-    # In[15]:
-
-
-    len(weather_tweets)
+    #zip tweet and timestamp together
+    mars_tweets = [{'tweet': b, 'time': c} for b, c in zip(weather_updates_fixed, tweet_times_dt)]
 
 
     # ### Mars Facts
-
-    # In[16]:
-
-
     url="https://space-facts.com/mars/"
     tables = pd.read_html(url)
-    tables
-    mars_df=tables[1]
+    mars_df=tables[0]
 
-
-    # In[17]:
-
-
+    #scrape the table to html
     mars_df.to_html('mars_data.html',index=False)
 
 
     # ### Mars Hemispheres
 
-    # In[18]:
-
-
-    executable_path = {'executable_path': '/usr/local/bin/chromedriver'}
-    browser = Browser('chrome', **executable_path, headless=False)
     url4="https://astrogeology.usgs.gov/search/results?q=hemisphere+enhanced&k1=target&v1=Mars"
     browser.visit(url4)
 
-
-    # In[19]:
-
-
     response4 = requests.get(url4)
     soup4 = bs(response4.text, 'html.parser')
-    with open('astrogeology2-html.txt', 'w', encoding='utf-8') as f_out:
-        f_out.write(soup4.prettify())
-
-
-    # In[20]:
-
 
     import re
     links = []
@@ -231,27 +151,17 @@ def scrape_info():
         img2 = img.replace(" Enhanced thumbnail",'')
         image_alts.append(img2)
         
-    print(image_alts)
-
-
-    # In[21]:
-
 
     final_links=[]
 
+    #create a link with original url and path
     for link in links:
         final_links.append(f"https://astrogeology.usgs.gov{link}")
     final_links
 
-
-    # In[25]:
-
-
+    #loop through each link to get the full size image location
     fullsize_image=[]
     for link in final_links:
-        executable_path = {'executable_path': '/usr/local/bin/chromedriver'}
-        browser = Browser('chrome', **executable_path, headless=False)
-    #     browser.visit(link)
         response5 = requests.get(link)
         soup5 = bs(response5.text, 'html.parser')
         
@@ -261,62 +171,21 @@ def scrape_info():
             except:
                 print("Scraping Complete! :)")
 
-    print(fullsize_image)
-
-
-    # In[53]:
-
-
+    #zip image and title to one
     hemisphere_image_urls = [{'title': a, 'img_url': f} for a, f in zip(image_alts, fullsize_image)]
-    print(hemisphere_image_urls)
 
 
-    # In[55]:
-
-
-    ### Mars News
-    print(headlines, descriptions)
-
-
-    # In[56]:
-
-
-
-    ### JPL Mars Space Images - Featured Image
-    featured_image_url
-
-
-    # In[57]:
-
-
-    ### Mars Weather
-    print(tweet_times)
-    print(weather_updates)
-
-
-    # In[58]:
-
-
-    ### Mars Facts
-    mars_df.to_html('mars_data.html',index=False)
-    mars_df
-
-
-    # In[59]:
-
-
-    ### Mars Hemisphere
-    hemisphere_image_urls = [{'title': a, 'img_url': f} for a, f in zip(image_alts, fullsize_image)]
-    print(hemisphere_image_urls)
-
-
-    # In[ ]:
-
-    mars_data = {
-        {"mars_news": headlines, descriptions},
-        "mars_image": featured_image_url,
-        {"mars_tweets": weather_updates, tweet_times},
-        "mars_hemispheres": hemisphere_image_urls
-    }
+    #create a dictionary of all of the items
+    mars_data["mars_news_headlines"] = headlines
+    mars_data["mars_news_desc"] = descriptions
+    mars_data["mars_news_link"] = news_links
+    mars_data["mars_image"] = featured_image_url
+    mars_data["mars_tweets"] = mars_tweets
+    mars_data["mars_hemispheres"] = hemisphere_image_urls
 
     return mars_data
+
+
+if __name__ == "__main__":
+    print(scrape())
+# If running as script, print scraped data
